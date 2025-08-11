@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
-from db_config import get_connection
+from game_api.db_config import get_connection
+
 
 app = Flask(__name__)
 
