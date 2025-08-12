@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from game_api.db_config import get_connection
-
+import psycopg2.extras  # for RealDictCursor
 
 app = Flask(__name__)
 
@@ -21,14 +21,12 @@ def register():
     db = get_connection()
     cursor = db.cursor()
 
-    # Check if user already exists
     cursor.execute("SELECT * FROM main_game WHERE user_name = %s", (username,))
     if cursor.fetchone():
         cursor.close()
         db.close()
         return jsonify({"status": "fail", "message": "Username already exists"})
 
-    # Create new user
     cursor.execute("INSERT INTO main_game (user_name, password) VALUES (%s, %s)", (username, password))
     db.commit()
     cursor.close()
@@ -48,7 +46,7 @@ def login():
         return jsonify({"status": "fail", "message": "Username and password required"})
 
     db = get_connection()
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)  # ✅ PostgreSQL dict cursor
 
     cursor.execute("SELECT * FROM main_game WHERE user_name = %s AND password = %s", (username, password))
     user = cursor.fetchone()
@@ -61,18 +59,18 @@ def login():
     else:
         return jsonify({"status": "fail", "message": "Invalid username or password"})
 
+
 # ---------------- UPDATE SCORE ROUTE ----------------
 @app.route('/update_score', methods=['POST'])
 def update_score():
     data = request.json
     username = data.get("username")
-    game = data.get("game")  # 'hard_car', 'easy_car', 'snake'
+    game = data.get("game")  
     score = data.get("score")
 
     if not username or not game or score is None:
         return jsonify({"status": "fail", "message": "Username, game, and score required"})
 
-    # Map game to DB column
     game_columns = {
         "hard_car": "hard_car_high_score",
         "easy_car": "easy_car_high_score",
@@ -87,7 +85,6 @@ def update_score():
     db = get_connection()
     cursor = db.cursor()
 
-    # Get current high score
     cursor.execute(f"SELECT {column_name} FROM main_game WHERE user_name = %s", (username,))
     result = cursor.fetchone()
 
@@ -110,7 +107,7 @@ def update_score():
 # ---------------- GET SCORES ROUTE ----------------
 @app.route('/get_scores', methods=['GET'])
 def get_scores():
-    game = request.args.get("game")  # 'hard_car', 'easy_car', 'snake'
+    game = request.args.get("game")
 
     if not game:
         return jsonify({"status": "fail", "message": "Game type required"})
@@ -127,7 +124,7 @@ def get_scores():
     column_name = game_columns[game]
 
     db = get_connection()
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)  # ✅ PostgreSQL dict cursor
 
     cursor.execute(f"SELECT user_name, {column_name} as score FROM main_game ORDER BY {column_name} DESC LIMIT 10")
     scores = cursor.fetchall()
