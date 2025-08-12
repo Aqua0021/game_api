@@ -1,3 +1,15 @@
-import mysql.connector
+import psycopg2
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 def get_connection():
-    return mysql.connector.connect(host='localhost',user='root',password="12345",database="Aqua_Infinity")
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        sslmode="require"
+    )
