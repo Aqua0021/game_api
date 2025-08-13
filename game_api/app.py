@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from game_api.db_config import get_connection
-import psycopg2.extras  # for RealDictCursor
+from psycopg.rows import dict_row  # for RealDictCursor
 
 app = Flask(__name__)
 
@@ -46,7 +46,7 @@ def login():
         return jsonify({"status": "fail", "message": "Username and password required"})
 
     db = get_connection()
-    cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)  # ✅ PostgreSQL dict cursor
+    cursor = db.cursor(row_factory=dict_row)  # ✅ PostgreSQL dict cursor
 
     cursor.execute("SELECT * FROM main_game WHERE user_name = %s AND password = %s", (username, password))
     user = cursor.fetchone()
@@ -124,7 +124,7 @@ def get_scores():
     column_name = game_columns[game]
 
     db = get_connection()
-    cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)  # ✅ PostgreSQL dict cursor
+    cursor = db.cursor(row_factory=dict_row)  # ✅ PostgreSQL dict cursor
 
     cursor.execute(f"SELECT user_name, {column_name} as score FROM main_game ORDER BY {column_name} DESC LIMIT 10")
     scores = cursor.fetchall()
