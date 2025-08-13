@@ -6,5 +6,5 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_connection():
-    conn = psycopg.connect(os.getenv("DATABASE_URL"))
+    conn = psycopg.connect(os.getenv("DATABASE_URL"), autocommit=True)
     return conn
