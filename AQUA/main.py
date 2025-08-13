@@ -1,14 +1,16 @@
 from tkinter import*
-import mysql.connector as sql
 from PIL import ImageTk,Image
 import tkinter.messagebox as mb
 import random
 import pygame
 import time
+import os
+import psycopg
+from urllib.parse import urlparse
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+mydb = psycopg.connect(DATABASE_URL)
 
-# create table main_game(user_name varchar(50) primary key,password varchar(50),hard_car_high_score int(100),easy_car_high_score int(100),snake_high_score int(100));
-mydb=sql.connect(host='127.0.0.1',user='root',password='12345',auth_plugin='mysql_native_password',database="Aqua_Infinity")
 
 def intro():
     root_login.destroy()
