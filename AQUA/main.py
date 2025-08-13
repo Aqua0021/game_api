@@ -56,10 +56,11 @@ def confirm2():
     Uname=E01.get()
     E2=E02.get()
     c=mydb.cursor()
-    c.execute('select user_name from main_game')
+    c.execute('SELECT user_name FROM main_game')
     c2=c.fetchall()
     c=mydb.cursor()
-    c.execute('select password from main_game where user_name ='+'"'+Uname+'"')
+    c.execute('SELECT password FROM main_game WHERE user_name = %s', (Uname,))
+
     c1=c.fetchone()
     L=[]
     for i in c2:
@@ -170,13 +171,13 @@ def INTRO():
 #car game
 def car_game():
     c=mydb.cursor()
-    c.execute('select hard_car_high_score,easy_car_high_score from main_game where user_name='+'"'+Uname+'"')
+    c.execute('SELECT hard_car_high_score, easy_car_high_score FROM main_game WHERE user_name = %s', (Uname,))
     global h_score_e,h_score_h,sc
     sc=c.fetchall()
     if sc[0][0]==None and sc[0][1]==None:
-        c.execute('update main_game set hard_car_high_score=0,easy_car_high_score=0 where user_name='+'"'+Uname+'"')
+        c.execute('UPDATE main_game SET hard_car_high_score = 0, easy_car_high_score = 0 WHERE user_name = %s', (Uname,))
         mydb.commit()
-        c.execute('select hard_car_high_score,easy_car_high_score from main_game where user_name='+'"'+Uname+'"')
+        c.execute('SELECT hard_car_high_score, easy_car_high_score FROM main_game WHERE user_name = %s', (Uname,))
         sc=c.fetchall()
     Intro.destroy()
     pygame.init()
@@ -239,6 +240,14 @@ def car_game():
         if 0<x<90 or 700<x+100:
             Message(100,"GAME OVER",200,200)
             pygame.display.update()
+
+            if h_score_e > sc[0][0]:  # Only update if it's a new high score
+                c.execute('UPDATE main_game SET easy_car_high_score = %s WHERE user_name = %s', (h_score_e, Uname))
+                mydb.commit()
+            if h_score_h > sc[0][1]:  # Only update if it's a new high score
+                c.execute('UPDATE main_game SET hard_car_high_score = %s WHERE user_name = %s', (h_score_h, Uname))
+                mydb.commit()
+
             clock.tick(1)
             game_intro()
     #enmy car
@@ -294,6 +303,15 @@ def car_game():
         if x_r<x<x_r+75 and y_r<y<y_r+85 or x_r<x+75<x_r+75 and y_r<y<y_r+85:
             Message(50,"CRASHED!",200,200)
             pygame.display.update()
+            
+            if h_score_e > sc[0][0]:  # Only update if it's a new high score
+                c.execute('UPDATE main_game SET easy_car_high_score = %s WHERE user_name = %s', (h_score_e, Uname))
+                mydb.commit()
+
+            if h_score_h > sc[0][1]:  # Only update if it's a new high score
+                c.execute('UPDATE main_game SET hard_car_high_score = %s WHERE user_name = %s', (h_score_h, Uname))
+                mydb.commit()
+
             time.sleep(1)
             game_intro()
             for event in pygame.event.get():
@@ -306,16 +324,11 @@ def car_game():
         gd.blit(screen_text,(0,20))
         screen_text1=font.render('high_score:'+str(h_score_e),True,white)
         gd.blit(screen_text1,(0,0))
-        c.execute('update main_game set easy_car_high_score='+str(h_score_e)+' where user_name='+'"'+Uname+'"')
-        mydb.commit()
     def score_hard(count1):
         font=pygame.font.SysFont(None,30)
         screen_text=font.render('score:'+str(count1),True,white)
         gd.blit(screen_text,(0,20))
         screen_text1=font.render('high_score:'+str(h_score_h),True,white)
-        gd.blit(screen_text1,(0,0))
-        c.execute('update main_game set hard_car_high_score='+str(h_score_h)+' where user_name='+'"'+Uname+'"')
-        mydb.commit()
     #intro
     def game_intro():
         intro=False
@@ -418,13 +431,13 @@ def car_game():
 #snake game
 def snake_game():
     c=mydb.cursor()
-    c.execute('select snake_high_score from main_game where user_name='+'"'+Uname+'"')
+    c.execute('SELECT snake_high_score FROM main_game WHERE user_name = %s', (Uname,))
     global sc
     sc1=c.fetchall()
     if sc1[0][0]==None:
-        c.execute('update main_game set snake_high_score=0 where user_name='+'"'+Uname+'"')
+        c.execute('UPDATE main_game SET snake_high_score = 0 WHERE user_name = %s', (Uname,))
         mydb.commit()
-        c.execute('select snake_high_score from main_game where user_name='+'"'+Uname+'"')
+        c.execute('SELECT snake_high_score FROM main_game WHERE user_name = %s', (Uname,))
         sc1=c.fetchall()
     global high_score,snakelength
     Intro.destroy()
@@ -441,7 +454,7 @@ def snake_game():
     blue=(0,0,255)
     high_score=sc1[0][0]
     #image
-    background=pygame.image.load('background2.png')
+    background=pygame.image.load('assets/background2.png')
     background=pygame.transform.scale(background,(600,600))
     #message\text
     def Message(size,mess,x_po,y_po):
@@ -581,7 +594,7 @@ def snake_game():
                 yr=random.randint(0,59)*10
             if high_score<count3:
                 high_score=count3
-                c.execute('update main_game set snake_high_score='+str(high_score)+' where user_name='+'"'+Uname+'"')
+                c.execute('UPDATE main_game SET snake_high_score = %s WHERE user_name = %s', (high_score, Uname))
                 mydb.commit()
             if len(snakehead)>=snakelength:
                 snakehead.pop(0)
