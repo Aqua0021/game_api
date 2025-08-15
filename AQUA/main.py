@@ -28,30 +28,30 @@ def _auth_headers():
 
 # -------- API CALLS --------
 def api_register(username, password):
-    r = requests.post(f"{BASE_URL}/api/register", json={"username": username, "password": password}, timeout=10)
+    r = requests.post(f"{BASE_URL}/api/register", json={"username": username, "password": password}, timeout=60)
     return r.ok, (r.json().get("msg") if r.headers.get("content-type","").startswith("application/json") else r.text)
 
 def api_login(username, password):
     global TOKEN
-    r = requests.post(f"{BASE_URL}/api/login", json={"username": username, "password": password}, timeout=10)
+    r = requests.post(f"{BASE_URL}/api/login", json={"username": username, "password": password}, timeout=60)
     if r.ok:
         TOKEN = r.json()["token"]
         return True, None
     return False, (r.json().get("msg") if r.headers.get("content-type","").startswith("application/json") else r.text)
 
 def api_get_scores():
-    r = requests.get(f"{BASE_URL}/api/scores", headers=_auth_headers(), timeout=10)
+    r = requests.get(f"{BASE_URL}/api/scores", headers=_auth_headers(), timeout=60)
     r.raise_for_status()
     return r.json()  # { "easy_car_high_score": int, "hard_car_high_score": int, "snake_high_score": int }
 
 def api_update_scores(payload):
     # payload can include any of: easy_car_high_score, hard_car_high_score, snake_high_score
-    r = requests.post(f"{BASE_URL}/api/scores", headers=_auth_headers(), json=payload, timeout=10)
+    r = requests.post(f"{BASE_URL}/api/scores", headers=_auth_headers(), json=payload, timeout=60)
     r.raise_for_status()
     return r.json()
 
 def api_leaderboard(kind):  # kind = "car_easy", "car_hard", "snake"
-    r = requests.get(f"{BASE_URL}/api/leaderboard", params={"kind": kind}, timeout=10)
+    r = requests.get(f"{BASE_URL}/api/leaderboard", params={"kind": kind}, timeout=60)
     r.raise_for_status()
     return r.json()  # [{ "user_name": "...", "score": 123 }, ...]
 
