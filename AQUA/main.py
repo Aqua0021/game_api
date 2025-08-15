@@ -6,6 +6,16 @@ import pygame
 import time
 import os
 import requests
+import sys
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller .exe"""
+    try:
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 
 # ===== API CONFIG =====
@@ -50,7 +60,7 @@ def intro():
     root_login.destroy()
     root=Tk()
     root.geometry("300x300")
-    img=Image.open('assets/car1.png')
+    img=Image.open(resource_path('assets/car1.png'))
     phot=img.resize((100,100))
     photo=ImageTk.PhotoImage(phot)
     Label(root,text="GAMES WITH AQUA",font=("arial",30,'bold')).pack()
@@ -69,7 +79,7 @@ def login():
     login1=Tk()
     login1.geometry("250x280")
     login1.resizable(width=False,height=False)
-    img1=Image.open('assets/signin.png')
+    img1=Image.open(resource_path('assets/signin.png'))
     phot1=img1.resize((250,280))
     photo1=ImageTk.PhotoImage(phot1)
     Label(login1,image=photo1).place(x=0,y=0)
@@ -120,7 +130,7 @@ def login02():
     login2=Tk()
     login2.geometry("250x300")
     login2.resizable(width=False,height=False)
-    img1=Image.open('assets/signin.png')
+    img1=Image.open(resource_path('assets/signin.png'))
     phot1=img1.resize((250,300))
     photo1=ImageTk.PhotoImage(phot1)
     Label(login2,image=photo1).place(x=0,y=0)
@@ -151,7 +161,7 @@ def log():
     root_login=Tk()
     root_login.geometry("500x250")
     root_login.resizable(width=False,height=False)
-    img=Image.open('assets/login.png')
+    img=Image.open(resource_path('assets/login.png'))
     phot=img.resize((500,250))
     photo=ImageTk.PhotoImage(phot)
     Label(root_login,image=photo).place(x=0,y=0)
@@ -169,13 +179,13 @@ def INTRO():
     Intro=Tk()
     Intro.geometry("500x250")
     Intro.resizable(width=False,height=False)
-    img=Image.open('assets/Intro.png')
+    img=Image.open(resource_path('assets/Intro.png'))
     phot=img.resize((500,250))
     photo=ImageTk.PhotoImage(phot)
-    img1=Image.open('assets/car1.png')
+    img1=Image.open(resource_path('assets/car1.png'))
     phot1=img1.resize((50,50))
     photo1=ImageTk.PhotoImage(phot1)
-    img2=Image.open('assets/background2.png')
+    img2=Image.open(resource_path('assets/background2.png'))
     phot2=img2.resize((50,50))
     photo2=ImageTk.PhotoImage(phot2)
     Label(Intro,image=photo).place(x=0,y=0)
@@ -234,12 +244,12 @@ def car_game():
     h_score_e=sc[0][0]
     h_score_h=sc[0][1]
     #image
-    car_img=pygame.image.load('assets/car2.png')
+    car_img=pygame.image.load(resource_path('assets/car2.png'))
     car_img=pygame.transform.scale(car_img,(100,100))
-    car_im=pygame.image.load('assets/car3.png')
+    car_im=pygame.image.load(resource_path('assets/car3.png'))
     car_im=pygame.transform.scale(car_im,(100,100))
-    background=pygame.image.load('assets/background.jpg')
-    grass=pygame.image.load('assets/grass.jpg')
+    background=pygame.image.load(resource_path('assets/background.jpg'))
+    grass=pygame.image.load(resource_path('assets/grass.jpg'))
     #message\text
     def Message(size,mess,x_pos,y_pos):
         font=pygame.font.SysFont(None,size)
@@ -484,7 +494,7 @@ def snake_game():
     blue=(0,0,255)
     high_score=sc1[0][0]
     #image
-    background=pygame.image.load('assets/background2.png')
+    background=pygame.image.load(resource_path('assets/background2.png'))
     background=pygame.transform.scale(background,(600,600))
     #message\text
     def Message(size,mess,x_po,y_po):
