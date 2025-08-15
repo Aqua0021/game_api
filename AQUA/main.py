@@ -578,6 +578,13 @@ def snake_game():
                 if head2.colliderect(i):
                     Message(100,"GAME OVER",100,200)
                     pygame.display.update()
+                    if high_score < count3:
+                        high_score = count3
+                        try:
+                            api_update_scores({"snake_high_score": high_score})
+                            sc1[0] = (high_score,)
+                        except Exception:
+                            pass
                     clock.tick(1)
                     snake_intro()
     def food(xr,yr):
@@ -632,13 +639,7 @@ def snake_game():
                 snakelength+=1
                 xr=random.randint(0,59)*10
                 yr=random.randint(0,59)*10
-            if high_score < count3:
-                high_score = count3
-                try:
-                    api_update_scores({"snake_high_score": high_score})
-                    sc1[0] = (high_score,)
-                except Exception:
-                    pass
+            
 
             if len(snakehead)>=snakelength:
                 snakehead.pop(0)
