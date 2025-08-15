@@ -5,11 +5,45 @@ import random
 import pygame
 import time
 import os
-import psycopg
-from urllib.parse import urlparse
+import requests
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-mydb = psycopg.connect(DATABASE_URL)
+
+# ===== API CONFIG =====
+BASE_URL = os.getenv("API_BASE_URL", "https://game-api-ok4d.onrender.com")  # e.g. https://your-app.onrender.com
+TOKEN = None
+Uname = None  # already used in your code
+
+def _auth_headers():
+    return {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
+
+# -------- API CALLS --------
+def api_register(username, password):
+    r = requests.post(f"{BASE_URL}/api/register", json={"username": username, "password": password}, timeout=10)
+    return r.ok, (r.json().get("msg") if r.headers.get("content-type","").startswith("application/json") else r.text)
+
+def api_login(username, password):
+    global TOKEN
+    r = requests.post(f"{BASE_URL}/api/login", json={"username": username, "password": password}, timeout=10)
+    if r.ok:
+        TOKEN = r.json()["token"]
+        return True, None
+    return False, (r.json().get("msg") if r.headers.get("content-type","").startswith("application/json") else r.text)
+
+def api_get_scores():
+    r = requests.get(f"{BASE_URL}/api/scores", headers=_auth_headers(), timeout=10)
+    r.raise_for_status()
+    return r.json()  # { "easy_car_high_score": int, "hard_car_high_score": int, "snake_high_score": int }
+
+def api_update_scores(payload):
+    # payload can include any of: easy_car_high_score, hard_car_high_score, snake_high_score
+    r = requests.post(f"{BASE_URL}/api/scores", headers=_auth_headers(), json=payload, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+def api_leaderboard(kind):  # kind = "car_easy", "car_hard", "snake"
+    r = requests.get(f"{BASE_URL}/api/leaderboard", params={"kind": kind}, timeout=10)
+    r.raise_for_status()
+    return r.json()  # [{ "user_name": "...", "score": 123 }, ...]
 
 
 def intro():
@@ -53,49 +87,32 @@ def login():
 
 def confirm2():
     global Uname
-    Uname=E01.get()
-    E2=E02.get()
-    c=mydb.cursor()
-    c.execute('SELECT user_name FROM main_game')
-    c2=c.fetchall()
-    c=mydb.cursor()
-    c.execute('SELECT password FROM main_game WHERE user_name = %s', (Uname,))
+    Uname = E01.get().strip()
+    pwd = E02.get()
+    ok, err = api_login(Uname, pwd)
+    if not ok:
+        mb.showerror('Oops', f'Login failed: {err or "Invalid credentials"}')
+        return
+    INTRO()
 
-    c1=c.fetchone()
-    L=[]
-    for i in c2:
-        L.append(i[0].lower())
-    if Uname.lower() not in L:
-        mb.showerror('Oppppps','User name or Password in incorrect')
-    elif E2!=c1[0]:
-        mb.showerror('Oppppps','User name or Password in incorrect')
-    else:
-        INTRO()
 
 def confirm1():
-    e1=e01.get()
-    e2=e02.get()
-    e3=e03.get()
-    try:
-        L=[]
-        c=mydb.cursor()
-        c.execute('select user_name from main_game')
-        c1=c.fetchall()
-        for i in c1:
-            L.append(i[0].lower())
-        if e1.lower() not in L:
-            if e2==e3 and e2!='':
-                c=mydb.cursor()
-                c.execute("insert into main_game(user_name,password) values(%s,%s)",(e1,e2))
-                mydb.commit()
-                if mb.askyesno('sucessfull','you are sucessfully registered now go to login')==True:
-                    login()
-            else:
-                mb.showerror('ERROR','PASSWORD are not same')
-        else:
-            mb.showinfo("",'USERNAME is already taken')
-    except:
-        pass
+    e1 = e01.get().strip()
+    e2 = e02.get()
+    e3 = e03.get()
+    if not e1 or not e2:
+        mb.showerror('ERROR', 'Username and password required')
+        return
+    if e2 != e3:
+        mb.showerror('ERROR', 'PASSWORDS are not the same')
+        return
+    ok, err = api_register(e1, e2)
+    if not ok:
+        mb.showerror('ERROR', f'Registration failed: {err or "try another username"}')
+        return
+    if mb.askyesno('Successful', 'Registered! Go to login?'):
+        login()
+
 
 def login02():
     global login2,e01,e02,e03
@@ -170,34 +187,32 @@ def INTRO():
 ############################################################
 #car game
 def car_game():
-    c=mydb.cursor()
-    c.execute('SELECT hard_car_high_score, easy_car_high_score FROM main_game WHERE user_name = %s', (Uname,))
-    global h_score_e,h_score_h,sc
-    sc=c.fetchall()
-    if sc[0][0]==None and sc[0][1]==None:
-        c.execute('UPDATE main_game SET hard_car_high_score = 0, easy_car_high_score = 0 WHERE user_name = %s', (Uname,))
-        mydb.commit()
-        c.execute('SELECT hard_car_high_score, easy_car_high_score FROM main_game WHERE user_name = %s', (Uname,))
-        sc=c.fetchall()
+    data = api_get_scores()
+    global h_score_e, h_score_h, sc
+    # keep a snapshot of server scores to decide if we should push updates later
+    sc = [(data.get("easy_car_high_score", 0), data.get("hard_car_high_score", 0))]
+    h_score_e = sc[0][0]
+    h_score_h = sc[0][1]
+
     Intro.destroy()
     pygame.init()
     clock=pygame.time.Clock()
     #leader board
     def leader_board():
-        c.execute('select user_name,hard_car_high_score from main_game order by hard_car_high_score desc')
-        lb1=c.fetchall()
-        c.execute('select user_name,easy_car_high_score from main_game order by easy_car_high_score desc')
-        lb2=c.fetchall()
+        lb_easy = api_leaderboard("car_easy")
+        lb_hard = api_leaderboard("car_hard")
         while True:
             gd.fill(gray)
             Message(50,"EASY",50,0)
             Message(50,"HARD",550,0)
             for i in range(1,21):
                 try:
-                    Message(30,str(lb1[i-1][0]),500,i*25)
-                    Message(30,str(lb1[i-1][1]),700,i*25)
-                    Message(30,str(lb2[i-1][0]),0,i*25)
-                    Message(30,str(lb2[i-1][1]),200,i*25)
+                    # Right column: HARD
+                    Message(30, str(lb_hard[i-1]["user_name"]), 500, i*25)
+                    Message(30, str(lb_hard[i-1]["score"]),     700, i*25)
+                    # Left column: EASY
+                    Message(30, str(lb_easy[i-1]["user_name"]), 0,   i*25)
+                    Message(30, str(lb_easy[i-1]["score"]),     200, i*25)
                     button(350,400,'BACK')
                 except:
                     pass
@@ -206,6 +221,7 @@ def car_game():
                     pygame.quit()
                     quit()
             pygame.display.update()
+
     #display surface
     gd=pygame.display.set_mode((800,600))
     white=(255,255,255)
@@ -241,12 +257,22 @@ def car_game():
             Message(100,"GAME OVER",200,200)
             pygame.display.update()
 
-            if h_score_e > sc[0][0]:  # Only update if it's a new high score
-                c.execute('UPDATE main_game SET easy_car_high_score = %s WHERE user_name = %s', (h_score_e, Uname))
-                mydb.commit()
-            if h_score_h > sc[0][1]:  # Only update if it's a new high score
-                c.execute('UPDATE main_game SET hard_car_high_score = %s WHERE user_name = %s', (h_score_h, Uname))
-                mydb.commit()
+                        # Only push if higher than server snapshot
+            payload = {}
+            if h_score_e > sc[0][0]:
+                payload["easy_car_high_score"] = h_score_e
+            if h_score_h > sc[0][1]:
+                payload["hard_car_high_score"] = h_score_h
+            if payload:
+                try:
+                    api_update_scores(payload)
+                    # refresh snapshot so we don't resend the same value
+                    sc[0] = (payload.get("easy_car_high_score", sc[0][0]),
+                            payload.get("hard_car_high_score", sc[0][1]))
+                except Exception as ex:
+                    # optional: log/ignore; keep gameplay smooth
+                    pass
+
 
             clock.tick(1)
             game_intro()
@@ -304,13 +330,22 @@ def car_game():
             Message(50,"CRASHED!",200,200)
             pygame.display.update()
             
-            if h_score_e > sc[0][0]:  # Only update if it's a new high score
-                c.execute('UPDATE main_game SET easy_car_high_score = %s WHERE user_name = %s', (h_score_e, Uname))
-                mydb.commit()
+                        # Only push if higher than server snapshot
+            payload = {}
+            if h_score_e > sc[0][0]:
+                payload["easy_car_high_score"] = h_score_e
+            if h_score_h > sc[0][1]:
+                payload["hard_car_high_score"] = h_score_h
+            if payload:
+                try:
+                    api_update_scores(payload)
+                    # refresh snapshot so we don't resend the same value
+                    sc[0] = (payload.get("easy_car_high_score", sc[0][0]),
+                            payload.get("hard_car_high_score", sc[0][1]))
+                except Exception as ex:
+                    # optional: log/ignore; keep gameplay smooth
+                    pass
 
-            if h_score_h > sc[0][1]:  # Only update if it's a new high score
-                c.execute('UPDATE main_game SET hard_car_high_score = %s WHERE user_name = %s', (h_score_h, Uname))
-                mydb.commit()
 
             time.sleep(1)
             game_intro()
@@ -430,16 +465,11 @@ def car_game():
 ############################################################
 #snake game
 def snake_game():
-    c=mydb.cursor()
-    c.execute('SELECT snake_high_score FROM main_game WHERE user_name = %s', (Uname,))
-    global sc
-    sc1=c.fetchall()
-    if sc1[0][0]==None:
-        c.execute('UPDATE main_game SET snake_high_score = 0 WHERE user_name = %s', (Uname,))
-        mydb.commit()
-        c.execute('SELECT snake_high_score FROM main_game WHERE user_name = %s', (Uname,))
-        sc1=c.fetchall()
-    global high_score,snakelength
+    data = api_get_scores()
+    sc1 = [(data.get("snake_high_score", 0),)]
+    global high_score, snakelength
+    high_score = sc1[0][0]
+
     Intro.destroy()
     pygame.init()
     clock=pygame.time.Clock()
@@ -479,15 +509,14 @@ def snake_game():
                 pygame.quit()
                 INTRO()
     def leader_board():
-        c.execute('select user_name,snake_high_score from main_game order by snake_high_score desc')
-        lb1=c.fetchall()
+        lb1 = api_leaderboard("snake")
         while True:
             gd.fill(black)
             Message(50,"RANKING",250,0)
             for i in range(1,21):
                 try:
-                    Message(30,str(lb1[i-1][0]),50,i*27)
-                    Message(30,str(lb1[i-1][1]),500,i*27)
+                    Message(30, str(lb1[i-1]["user_name"]), 50,  i*27)
+                    Message(30, str(lb1[i-1]["score"]),     500, i*27)
                     button(0,0,'BACK')
                 except:
                     pass
@@ -496,6 +525,7 @@ def snake_game():
                     pygame.quit()
                     quit()
             pygame.display.update()
+
                 
             
     def head(snakehead):
@@ -592,10 +622,14 @@ def snake_game():
                 snakelength+=1
                 xr=random.randint(0,59)*10
                 yr=random.randint(0,59)*10
-            if high_score<count3:
-                high_score=count3
-                c.execute('UPDATE main_game SET snake_high_score = %s WHERE user_name = %s', (high_score, Uname))
-                mydb.commit()
+            if high_score < count3:
+                high_score = count3
+                try:
+                    api_update_scores({"snake_high_score": high_score})
+                    sc1[0] = (high_score,)
+                except Exception:
+                    pass
+
             if len(snakehead)>=snakelength:
                 snakehead.pop(0)
             out(x_pos,y_pos)

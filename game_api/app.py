@@ -1,138 +1,106 @@
+# app.py (Render)
 from flask import Flask, request, jsonify
-from game_api.db_config import get_connection
-from psycopg.rows import dict_row  # for RealDictCursor
+from flask_cors import CORS
+import os, time, hmac, hashlib, base64
+import psycopg  # server side only
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
+CORS(app)
 
-@app.route('/')
-def home():
-    return "✅ Flask Game API is running!"
+SECRET = os.getenv("API_SECRET", "change-me")  # set in Render
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# ---------------- REGISTER ROUTE ----------------
-@app.route('/register', methods=['POST'])
+def db():
+    return psycopg.connect(DATABASE_URL)
+
+# --- tiny HMAC token (expires in 1 hour) ---
+def make_token(username):
+    exp = int(time.time()) + 3600
+    msg = f"{username}.{exp}".encode()
+    sig = hmac.new(SECRET.encode(), msg, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(msg + b"." + sig).decode()
+
+def verify_token(token):
+    try:
+        raw = base64.urlsafe_b64decode(token.encode())
+        parts = raw.split(b".")
+        if len(parts) != 3: return None
+        username = parts[0].decode()
+        exp = int(parts[1].decode())
+        sig = parts[2]
+        if time.time() > exp: return None
+        msg = parts[0] + b"." + parts[1]
+        expect = hmac.new(SECRET.encode(), msg, hashlib.sha256).digest()
+        if not hmac.compare_digest(sig, expect): return None
+        return username
+    except Exception:
+        return None
+
+def require_auth():
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "): return None
+    return verify_token(auth.split(" ",1)[1])
+
+@app.post("/api/register")
 def register():
-    data = request.json
-    username = data.get("username")
-    password = data.get("password")
+    data = request.get_json(force=True)
+    u, p = data.get("username","").strip(), data.get("password","")
+    if not u or not p: return jsonify(msg="missing fields"), 400
+    with db() as conn, conn.cursor() as c:
+        c.execute("select 1 from main_game where user_name=%s", (u,))
+        if c.fetchone(): return jsonify(msg="username taken"), 409
+        c.execute("insert into main_game(user_name,password) values(%s,%s)", (u,p))
+        conn.commit()
+    return jsonify(msg="ok"), 200
 
-    if not username or not password:
-        return jsonify({"status": "fail", "message": "Username and password required"})
-
-    db = get_connection()
-    cursor = db.cursor()
-
-    cursor.execute("SELECT * FROM main_game WHERE user_name = %s", (username,))
-    if cursor.fetchone():
-        cursor.close()
-        db.close()
-        return jsonify({"status": "fail", "message": "Username already exists"})
-
-    cursor.execute("INSERT INTO main_game (user_name, password) VALUES (%s, %s)", (username, password))
-    db.commit()
-    cursor.close()
-    db.close()
-
-    return jsonify({"status": "ok", "message": "Account created successfully"})
-
-
-# ---------------- LOGIN ROUTE ----------------
-@app.route('/login', methods=['POST'])
+@app.post("/api/login")
 def login():
-    data = request.json
-    username = data.get("username")
-    password = data.get("password")
+    data = request.get_json(force=True)
+    u, p = data.get("username","").strip(), data.get("password","")
+    with db() as conn, conn.cursor() as c:
+        c.execute("select password from main_game where user_name=%s", (u,))
+        row = c.fetchone()
+        if not row or row[0] != p:
+            return jsonify(msg="invalid credentials"), 401
+    return jsonify(token=make_token(u))
 
-    if not username or not password:
-        return jsonify({"status": "fail", "message": "Username and password required"})
-
-    db = get_connection()
-    cursor = db.cursor(row_factory=dict_row)  # ✅ PostgreSQL dict cursor
-
-    cursor.execute("SELECT * FROM main_game WHERE user_name = %s AND password = %s", (username, password))
-    user = cursor.fetchone()
-
-    cursor.close()
-    db.close()
-
-    if user:
-        return jsonify({"status": "ok", "message": "Login successful"})
-    else:
-        return jsonify({"status": "fail", "message": "Invalid username or password"})
-
-
-# ---------------- UPDATE SCORE ROUTE ----------------
-@app.route('/update_score', methods=['POST'])
-def update_score():
-    data = request.json
-    username = data.get("username")
-    game = data.get("game")  
-    score = data.get("score")
-
-    if not username or not game or score is None:
-        return jsonify({"status": "fail", "message": "Username, game, and score required"})
-
-    game_columns = {
-        "hard_car": "hard_car_high_score",
-        "easy_car": "easy_car_high_score",
-        "snake": "snake_high_score"
-    }
-
-    if game not in game_columns:
-        return jsonify({"status": "fail", "message": "Invalid game type"})
-
-    column_name = game_columns[game]
-
-    db = get_connection()
-    cursor = db.cursor()
-
-    cursor.execute(f"SELECT {column_name} FROM main_game WHERE user_name = %s", (username,))
-    result = cursor.fetchone()
-
-    if result:
-        current_score = result[0] or 0
-        if score > current_score:
-            cursor.execute(f"UPDATE main_game SET {column_name} = %s WHERE user_name = %s", (score, username))
-            db.commit()
-            message = "Score updated"
-        else:
-            message = "Score not updated (lower than current)"
-    else:
-        message = "User not found"
-
-    cursor.close()
-    db.close()
-    return jsonify({"status": "ok", "message": message})
-
-
-# ---------------- GET SCORES ROUTE ----------------
-@app.route('/get_scores', methods=['GET'])
+@app.get("/api/scores")
 def get_scores():
-    game = request.args.get("game")
+    u = require_auth()
+    if not u: return jsonify(msg="unauthorized"), 401
+    with db() as conn, conn.cursor() as c:
+        c.execute("""select easy_car_high_score, hard_car_high_score, snake_high_score
+                     from main_game where user_name=%s""", (u,))
+        row = c.fetchone() or (0,0,0)
+    return jsonify(
+        easy_car_high_score = row[0] or 0,
+        hard_car_high_score = row[1] or 0,
+        snake_high_score    = row[2] or 0
+    )
 
-    if not game:
-        return jsonify({"status": "fail", "message": "Game type required"})
+@app.post("/api/scores")
+def post_scores():
+    u = require_auth()
+    if not u: return jsonify(msg="unauthorized"), 401
+    data = request.get_json(force=True)
+    fields, vals = [], []
+    for col in ("easy_car_high_score","hard_car_high_score","snake_high_score"):
+        if col in data:
+            fields.append(f"{col} = GREATEST(COALESCE({col},0), %s)")
+            vals.append(int(data[col]))
+    if not fields: return jsonify(msg="nothing to update"), 400
+    with db() as conn, conn.cursor() as c:
+        c.execute(f"update main_game set {', '.join(fields)} where user_name=%s", (*vals, u))
+        conn.commit()
+    return jsonify(msg="ok")
 
-    game_columns = {
-        "hard_car": "hard_car_high_score",
-        "easy_car": "easy_car_high_score",
-        "snake": "snake_high_score"
-    }
-
-    if game not in game_columns:
-        return jsonify({"status": "fail", "message": "Invalid game type"})
-
-    column_name = game_columns[game]
-
-    db = get_connection()
-    cursor = db.cursor(row_factory=dict_row)  # ✅ PostgreSQL dict cursor
-
-    cursor.execute(f"SELECT user_name, {column_name} as score FROM main_game ORDER BY {column_name} DESC LIMIT 10")
-    scores = cursor.fetchall()
-
-    cursor.close()
-    db.close()
-    return jsonify({"status": "ok", "scores": scores})
-
-
-if __name__ == '__main__':
-    app.run(debug=True)
+@app.get("/api/leaderboard")
+def leaderboard():
+    kind = request.args.get("kind")  # car_easy | car_hard | snake
+    col = {"car_easy":"easy_car_high_score", "car_hard":"hard_car_high_score", "snake":"snake_high_score"}.get(kind)
+    if not col: return jsonify(msg="bad kind"), 400
+    with db() as conn, conn.cursor() as c:
+        c.execute(f"select user_name, COALESCE({col},0) as s from main_game order by s desc limit 50")
+        rows = c.fetchall()
+    return jsonify([{"user_name": r[0], "score": int(r[1] or 0)} for r in rows])
